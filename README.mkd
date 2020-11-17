@@ -1,0 +1,1 @@
+/home/aconbere/Packages/ATTinyCore/avr/variants/tinyX5/pins_arduino.h
