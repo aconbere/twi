@@ -9,6 +9,15 @@
 #define DELAY_T4TWI 1 // >0.6us
 #define TWI_NACK_BIT 0 // Bit position for (N)ACK bit.
 
+#define READ true // Bit position for (N)ACK bit.
+#define WRITE false // Bit position for (N)ACK bit.
+
+#define NACK 0xFF
+#define ACK 0x00
+
+#define MORE true
+#define END false
+
 // Prepare register value to: Clear flags, and set USI to shift 8 bits i.e. count 16 clock edges.
 const unsigned char USISR_8bit = 1<<USISIF | 1<<USIOIF | 1<<USIPF | 1<<USIDC | 0x0<<USICNT0;
 
@@ -20,14 +29,16 @@ public:
   Twi();
 
   void init(void);
-  uint8_t read(void);
-  void readn(uint8_t array[], uint8_t);
-  bool write(uint8_t data);
   bool start(uint8_t address, bool read);
   void stop(void);
 
+  uint8_t read(bool);
+  uint8_t read_one(void);
+  void readn(uint8_t array[], uint8_t);
+
+  bool write(uint8_t data);
+
 private:
-  uint8_t _read(bool);
   uint8_t transfer(uint8_t status);
 };
 #endif

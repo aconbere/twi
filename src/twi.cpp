@@ -125,29 +125,24 @@ bool Twi::start (uint8_t address, bool read) {
  * need to generate an ACK over and over until completion
  * then NACK.
  */
-uint8_t Twi::read() {
-  // Read a byte
-  DDRB &= ~(1 << DD_USI_SDA); // Enable SDA as input.
-  uint8_t data = this->transfer(USISR_8bit);
-
-  // Send NACK to signal completion of read
-  USIDR = 0xFF;
-  this->transfer(USISR_1bit);
-
-  return data;
+uint8_t Twi::read_one() {
+  return this->read(END);
 }
 
-uint8_t Twi::_read(bool ack) {
+/* ACK = false for end of reading
+ * ACK = true for more to read
+ */
+uint8_t Twi::read(bool more) {
   // Read a byte
   DDRB &= ~(1 << DD_USI_SDA); // Enable SDA as input.
   uint8_t data = this->transfer(USISR_8bit);
 
-  if (ack) {
-    // NACK: completion of read
-    USIDR = 0x00;
-  } else {
+  if (more) {
     // Ack: More to read
-    USIDR = 0xFF;
+    USIDR = ACK;
+  } else {
+    // NACK: completion of read
+    USIDR = NACK;
   }
 
   this->transfer(USISR_1bit);
@@ -156,14 +151,12 @@ uint8_t Twi::_read(bool ack) {
 
 void Twi::readn(uint8_t array[], uint8_t n) {
   while (n > 0) {
-    array[n] = this->_read(true);
+    array[n] = this->read(MORE);
     n--;
   }
 
-  array[0] = this->_read(false);
+  array[0] = this->read(END);
 }
-
-
 
 bool Twi::write(uint8_t data) {
   // Write a byte 
