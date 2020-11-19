@@ -1,1 +1,3 @@
 /home/aconbere/Packages/ATTinyCore/avr/variants/tinyX5/pins_arduino.h
+
+Uses: https://github.com/technoblogy/tiny-i2c as a source of inspiration
