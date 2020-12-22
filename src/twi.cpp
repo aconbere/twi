@@ -54,15 +54,6 @@ void Twi::init() {
 }
 
 // Start transmission by sending address
-/* Start condition:
- *
- * SDA and SCL are set HIGH
- * SDA is set LOW
- * SCL is set LOW
- *
- * In the original you can pass in an int for "read"
- * 
- */
 bool Twi::start (uint8_t address, bool read) {
   uint8_t addressRW = address << 1;
 
@@ -70,9 +61,7 @@ bool Twi::start (uint8_t address, bool read) {
     addressRW |= 0x01;
   }
 
-  /* Establish I2C start conditions */
-
-  // Set SCL HIGH
+  /* Release SCL to ensure that (repeated) Start can be performed */
   PORTB |= 1 << PORT_USI_SCL;
 
   // Verify that SCL becomes high.
@@ -80,38 +69,28 @@ bool Twi::start (uint8_t address, bool read) {
     _delay_us(DELAY_T4TWI);
   }
 
-  // Set SDA LOW
-  PORTB &= ~(1 << PORT_USI_SDA);
+  /* Generate Start Condition */
+  PORTB &= ~(1 << PORT_USI_SDA); // Force SDA LOW.
   _delay_us(DELAY_T4TWI);
 
-  // Set SCL LOW
-  PORTB &= ~(1 << PORT_USI_SCL);
+  PORTB &= ~(1 << PORT_USI_SCL); // Pull SCL LOW.
+  PORTB |= 1 << PORT_USI_SDA; // Release SDA.
 
-  // Set SDA to HIGH
-  PORTB |= 1 << PORT_USI_SDA;
-
-  /* When USISIF on USISR is HIGH this indicates that a start condition has been observed
-   * If we haven't observed the start condition then something is wrong and we'll bail
-   */
   if (!(USISR & 1 << USISIF)) {
     return false;
   }
 
-  /* Write address */
+  /*Write address */
+  PORTB &= ~(1 << PORT_USI_SCL); // Pull SCL LOW.
 
-  // Set SCL LOW
-  PORTB &= ~(1 << PORT_USI_SCL);
-
-  // Put address on the USI Data Register
+  // Setup data.
   USIDR = addressRW;
 
   // Send 8 bits on bus.
   this->transfer(USISR_8bit);
 
   /* Clock and verify (N)ACK from slave */
-
   DDRB &= ~(1 << DD_USI_SDA); // Enable SDA as input.
-
   if (this->transfer(USISR_1bit) & 1 << TWI_NACK_BIT) {
     // No ACK
     return false;
@@ -121,41 +100,18 @@ bool Twi::start (uint8_t address, bool read) {
   return true;
 }
 
-/* In cases where you want to read multiple bytes off of the line
- * need to generate an ACK over and over until completion
- * then NACK.
- */
-uint8_t Twi::read_one() {
-  return this->read(END);
-}
-
-/* ACK = false for end of reading
- * ACK = true for more to read
- */
-uint8_t Twi::read(bool more) {
+uint8_t Twi::read() {
   // Read a byte
   DDRB &= ~(1 << DD_USI_SDA); // Enable SDA as input.
   uint8_t data = this->transfer(USISR_8bit);
 
-  if (more) {
-    // Ack: More to read
-    USIDR = ACK;
-  } else {
-    // NACK: completion of read
-    USIDR = NACK;
-  }
+  // Prepare to generate ACK (or NACK in case of End Of Transmission)
+  USIDR = 0xFF;
 
+ // Generate ACK/NACK.
   this->transfer(USISR_1bit);
+
   return data;
-}
-
-void Twi::readn(uint8_t array[], uint8_t n) {
-  while (n > 0) {
-    array[n] = this->read(MORE);
-    n--;
-  }
-
-  array[0] = this->read(END);
 }
 
 bool Twi::write(uint8_t data) {
@@ -174,19 +130,10 @@ bool Twi::write(uint8_t data) {
   return true;                                // Write successfully completed
 }
 
-/* Moves bytes on the bus
- *
- * USISR: Status register
- * USICR: Control Register
- *
- * See USISR_8bit and USISR_1bit as preconfigured
- * statuses for transfering a byte and a bit respectively
- */
 uint8_t Twi::transfer(uint8_t status) {
-  // Set USISR according to status
-  USISR = status;
+  USISR = status; // Set USISR according to data.
 
-  // Prepare clocking
+  // Prepare clocking.
   status = 0 << USISIE | 0 << USIOIE | // Interrupts disabled
            1 << USIWM1 | 0 << USIWM0 | // Set USI in Two-wire mode.
            1 << USICS1 | 0 << USICS0 | 1 << USICLK | // Software clock strobe as source.
@@ -205,12 +152,6 @@ uint8_t Twi::transfer(uint8_t status) {
 
     // Generate negative SCL edge.
     USICR = status;
-
-    /* USIOIF is the counter overflow interupt flag
-     * when we set the status register earlier we gave it a number of 
-     * edges to count (16 for 8 bits, 2 for 1 bit) this bit will
-     * be set when that counter overflows thus observing transfer completion
-     */
   } while (!(USISR & 1 << USIOIF)); // Check for transfer complete.
 
   _delay_us(DELAY_T2TWI);
