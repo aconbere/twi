@@ -25,7 +25,7 @@
 #define DD_USI_SDA DDB0
 #define DD_USI_SCL DDB2
 
-void twi_init() {
+void primary_init() {
   // Enable pullup on SDA.
   PORTB |= 1 << PORT_USI_SDA;
 
@@ -52,7 +52,7 @@ void twi_init() {
 }
 
 // Start transmission by sending address
-bool twi_start (uint8_t address, bool read) {
+bool primary_start (uint8_t address, bool read) {
   uint8_t addressRW = address << 1;
 
   if (read) {
@@ -85,11 +85,11 @@ bool twi_start (uint8_t address, bool read) {
   USIDR = addressRW;
 
   // Send 8 bits on bus.
-  twi_transfer(USISR_8bit);
+  primary_transfer(USISR_8bit);
 
   /* Clock and verify (N)ACK from slave */
   DDRB &= ~(1 << DD_USI_SDA); // Enable SDA as input.
-  if (twi_transfer(USISR_1bit) & 1 << TWI_NACK_BIT) {
+  if (primary_transfer(USISR_1bit) & 1 << primary_NACK_BIT) {
     // No ACK
     return false;
   }
@@ -98,37 +98,37 @@ bool twi_start (uint8_t address, bool read) {
   return true;
 }
 
-uint8_t twi_read() {
+uint8_t primary_read() {
   // Read a byte
   DDRB &= ~(1 << DD_USI_SDA); // Enable SDA as input.
-  uint8_t data = twi_transfer(USISR_8bit);
+  uint8_t data = primary_transfer(USISR_8bit);
 
   // Prepare to generate ACK (or NACK in case of End Of Transmission)
   USIDR = 0xFF;
 
  // Generate ACK/NACK.
-  twi_transfer(USISR_1bit);
+  primary_transfer(USISR_1bit);
 
   return data;
 }
 
-bool twi_write(uint8_t data) {
+bool primary_write(uint8_t data) {
   // Write a byte 
   PORTB &= ~(1 << PORT_USI_SCL); // Pull SCL LOW.
   USIDR = data; // Setup data.
-  twi_transfer(USISR_8bit); // Send 8 bits on bus.
+  primary_transfer(USISR_8bit); // Send 8 bits on bus.
 
   /* Clock and verify (N)ACK from slave */
   DDRB &= ~(1 << DD_USI_SDA); // Enable SDA as input.
 
-  if (twi_transfer(USISR_1bit) & 1 << TWI_NACK_BIT) {
+  if (primary_transfer(USISR_1bit) & 1 << primary_NACK_BIT) {
     return false;
   }
 
   return true;                                // Write successfully completed
 }
 
-uint8_t twi_transfer(uint8_t status) {
+uint8_t primary_transfer(uint8_t status) {
   USISR = status; // Set USISR according to data.
 
   // Prepare clocking.
@@ -167,7 +167,7 @@ uint8_t twi_transfer(uint8_t status) {
   return status;
 }
 
-void twi_stop (void) {
+void primary_stop (void) {
   // Pull SDA low.
   PORTB &= ~(1 << PORT_USI_SDA);
 
