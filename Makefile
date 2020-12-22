@@ -8,11 +8,11 @@ CPP					= avr-g++ -std=c++11 -Wall -Os -DF_CPU=$(CLOCK) -mmcu=$(DEVICE) -Ilib -f
 
 .DEFAULT_GOAL := all
 
-build/twi.o: src/twi.cpp src/twi.h
-	$(CPP) -o ./build/main.o -c src/twi.cpp
+build/primary.o: src/primary.c src/primary.h
+	$(CC) -o ./build/primary.o -c src/primary.c
 
 .PHONY: all
-all: build/twi.o
+all: build/primary.o
 
 .PHONY: clean
 clean:
