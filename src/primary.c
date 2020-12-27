@@ -52,12 +52,11 @@ void primary_init() {
 }
 
 // Start transmission by sending address
-bool primary_start (uint8_t address, bool read) {
+bool primary_start (uint8_t address) {
   uint8_t addressRW = address << 1;
 
-  if (read) {
-    addressRW |= 0x01;
-  }
+  // set rw bit to WRITE 
+  addressRW |= 0x00;
 
   /* Release SCL to ensure that (repeated) Start can be performed */
   PORTB |= 1 << PORT_USI_SCL;
@@ -67,19 +66,41 @@ bool primary_start (uint8_t address, bool read) {
     _delay_us(DELAY_T4TWI);
   }
 
-  /* Generate Start Condition */
-  PORTB &= ~(1 << PORT_USI_SDA); // Force SDA LOW.
+  /* Generate Start Condition
+   *
+   * To initiate the address frame, the controller device leaves SCL high and
+   * pulls SDA low. This puts all peripheral devices on notice that a
+   * transmission is about to start. If two controllers wish to take ownership
+   * of the bus at one time, whichever device pulls SDA low first wins the race
+   * and gains control of the bus. It is possible to issue repeated starts,
+   * initiating a new communication sequence without relinquishing control of
+   * the bus to other controller(s);
+   */
+
+  // Force SDA LOW.
+  PORTB &= ~(1 << PORT_USI_SDA);
   _delay_us(DELAY_T4TWI);
 
-  PORTB &= ~(1 << PORT_USI_SCL); // Pull SCL LOW.
-  PORTB |= 1 << PORT_USI_SDA; // Release SDA.
+  // Pull SCL LOW.
+  PORTB &= ~(1 << PORT_USI_SCL);
 
+  // Release SDA.
+  PORTB |= 1 << PORT_USI_SDA;
+
+  /* USISIF is a flag that is flipped by the USI function on the AVR chip
+   * if we have successfully triggered a start condition the controller
+   * will detect the start condition and set this flag
+   *
+   * see: 15.3.4 Two Wire Mode in the manual
+   */
   if (!(USISR & 1 << USISIF)) {
     return false;
   }
 
-  /*Write address */
-  PORTB &= ~(1 << PORT_USI_SCL); // Pull SCL LOW.
+  /* Write address */
+
+  // Pull SCL LOW.
+  PORTB &= ~(1 << PORT_USI_SCL);
 
   // Setup data.
   USIDR = addressRW;
@@ -87,9 +108,12 @@ bool primary_start (uint8_t address, bool read) {
   // Send 8 bits on bus.
   primary_transfer(USISR_8bit);
 
-  /* Clock and verify (N)ACK from slave */
-  DDRB &= ~(1 << DD_USI_SDA); // Enable SDA as input.
-  if (primary_transfer(USISR_1bit) & 1 << primary_NACK_BIT) {
+  /* Clock and verify (N)ACK from primary */
+
+  // Enable SDA as input.
+  DDRB &= ~(1 << DD_USI_SDA);
+
+  if (primary_transfer(USISR_1bit) & 1 << PRIMARY_NACK_BIT) {
     // No ACK
     return false;
   }
@@ -100,7 +124,9 @@ bool primary_start (uint8_t address, bool read) {
 
 uint8_t primary_read() {
   // Read a byte
-  DDRB &= ~(1 << DD_USI_SDA); // Enable SDA as input.
+
+  // Enable SDA as input.
+  DDRB &= ~(1 << DD_USI_SDA);
   uint8_t data = primary_transfer(USISR_8bit);
 
   // Prepare to generate ACK (or NACK in case of End Of Transmission)
@@ -113,23 +139,33 @@ uint8_t primary_read() {
 }
 
 bool primary_write(uint8_t data) {
-  // Write a byte 
-  PORTB &= ~(1 << PORT_USI_SCL); // Pull SCL LOW.
-  USIDR = data; // Setup data.
-  primary_transfer(USISR_8bit); // Send 8 bits on bus.
+  /* Write a byte */
 
-  /* Clock and verify (N)ACK from slave */
-  DDRB &= ~(1 << DD_USI_SDA); // Enable SDA as input.
+  // Pull SCL LOW.
+  PORTB &= ~(1 << PORT_USI_SCL);
 
-  if (primary_transfer(USISR_1bit) & 1 << primary_NACK_BIT) {
+  // Setup data.
+  USIDR = data;
+
+  // Send 8 bits on bus.
+  primary_transfer(USISR_8bit);
+
+  /* Clock and verify (N)ACK from secondary */
+
+  // Enable SDA as input.
+  DDRB &= ~(1 << DD_USI_SDA);
+
+  if (primary_transfer(USISR_1bit) & 1 << PRIMARY_NACK_BIT) {
     return false;
   }
 
-  return true;                                // Write successfully completed
+  // Write successfully completed
+  return true;
 }
 
 uint8_t primary_transfer(uint8_t status) {
-  USISR = status; // Set USISR according to data.
+  // Set USISR according to data.
+  USISR = status;
 
   // Prepare clocking.
   status = 0 << USISIE | 0 << USIOIE | // Interrupts disabled
@@ -150,7 +186,9 @@ uint8_t primary_transfer(uint8_t status) {
 
     // Generate negative SCL edge.
     USICR = status;
-  } while (!(USISR & 1 << USIOIF)); // Check for transfer complete.
+
+    // Check for transfer complete.
+  } while (!(USISR & 1 << USIOIF)); 
 
   _delay_us(DELAY_T2TWI);
 
